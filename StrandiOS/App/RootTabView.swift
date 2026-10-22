@@ -30,6 +30,7 @@ struct RootTabView: View {
     let homeScreenQuickActionsEnabled: Bool
 
     @EnvironmentObject private var repo: Repository
+    @EnvironmentObject private var profile: ProfileStore   // R+ fork: RPABridge weight sync
     /// Cross-screen navigation requests (e.g. Live → "Manage devices"). Devices isn't a tab — it lives
     /// behind the More list — so a request presents it as a sheet, matching the quick-action screens.
     @EnvironmentObject private var router: NavRouter
@@ -51,12 +52,12 @@ struct RootTabView: View {
     /// root view alive, so an at-root re-tap keeps scroll position and never re-runs `.task`
     /// (#198; the #197 resetID/`.id()` rebuild reset both). Requires the tab roots' first-hop
     /// links to push `TabRoute`/`MoreDestination` VALUES — closure-destination links bypass the path.
-    @State private var tabPaths: [NavigationPath] = Array(repeating: NavigationPath(), count: 5)
+    @State private var tabPaths: [NavigationPath] = Array(repeating: NavigationPath(), count: 6)   // R+ fork: 6 (gym tab = 5)
     /// One scroll-to-top token per tab. Bumped when the user re-taps the active tab while it's ALREADY
     /// at its root — the other half of the iOS convention #197/#198 left unserved (an at-root re-tap was
     /// a no-op). Threaded into each tab's root via `\.scrollToTopSignal`; ScreenScaffold / LiquidTodayView
     /// scroll to their top anchor when their tab's token changes.
-    @State private var scrollTop: [Int] = Array(repeating: 0, count: 5)
+    @State private var scrollTop: [Int] = Array(repeating: 0, count: 6)   // R+ fork: 6 (gym tab = 5)
     /// Which More-tab groups are expanded (S2). Insights + Body stay open at rest; Data + App collapse to
     /// just their header until tapped. Persisted (#860 item 2): the user's open/closed choice must SURVIVE
     /// leaving and re-entering the More tab (and relaunch), not reset to the seed every visit. Backed by an
@@ -111,7 +112,7 @@ struct RootTabView: View {
         DragGesture(minimumDistance: 24)
             .onEnded { v in
                 // Today (tab 0) uses horizontal swipe to change DAYS, so tab-swipe is off there.
-                guard selectedTab != 0 else { return }
+                guard selectedTab != 0, selectedTab != 5 else { return }   // R+ fork: gym tab keeps its own swipes
                 let dx = v.translation.width, dy = v.translation.height
                 guard abs(dx) > 60, abs(dx) > abs(dy) * 1.6 else { return }
                 let next = min(4, max(0, selectedTab + (dx < 0 ? 1 : -1)))
@@ -127,6 +128,7 @@ struct RootTabView: View {
         // the corresponding system material and safe-area behaviour from the same TabView.
         TabView(selection: nativeTabSelection) {
             tab(todayTabRoot, "Today", "square.grid.2x2", path: $tabPaths[0], scrollSignal: scrollTop[0]).tag(0)
+            RPAGymTab(onClose: { selectedTab = 0 }).tabItem { Label("健身", systemImage: "dumbbell") }.tag(5)   // R+ fork
             tab(TrendsView(), "Trends", "chart.line.uptrend.xyaxis", path: $tabPaths[1], scrollSignal: scrollTop[1]).tag(1)
             tab(SleepView(), "Sleep", "bed.double", path: $tabPaths[2], scrollSignal: scrollTop[2]).tag(2)
             // K3: Coach promoted to a top-level tab (was behind the More list). The sparkles icon
@@ -141,6 +143,7 @@ struct RootTabView: View {
             moreTab(path: $tabPaths[4], scrollSignal: scrollTop[4]).tag(4)
         }
         .tint(StrandPalette.accent)
+        .task { RPABridge.shared.start(repo: repo, profile: profile) }   // R+ fork
         // Switching Coach off while STANDING on it leaves `selectedTab` pointing at a tag no tab claims
         // any more, which renders as an empty tab rather than as an error. Send that wearer to Today, and
         // only in that case, so a flip made from anywhere else does not move them.

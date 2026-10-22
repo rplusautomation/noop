@@ -118,3 +118,6 @@ tools/linux-capture/*.db
 tools/linux-capture/*.db-wal
 tools/linux-capture/*.db-shm
 tools/linux-capture/captures/
+
+# R+ fork: Supabase URL/key/push token for StrandiOS/RPA (generated from ~/Gym/.env)
+StrandiOS/RPA/RPASecrets.swift
