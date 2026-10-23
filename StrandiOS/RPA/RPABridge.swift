@@ -32,8 +32,8 @@ final class RPABridge {
         guard self.repo == nil else { return }
         self.repo = repo
         self.profile = profile
-        // Ranger wants workout suggestions (boxing, runs) on: switch NOOP's opt-in detector on once; a
-        // later toggle in Settings wins.
+        // This fork wants workout suggestions on: switch NOOP's opt-in detector on once; a later toggle in
+        // Settings wins.
         if UserDefaults.standard.object(forKey: PuffinExperiment.autoDetectWorkoutsKey) == nil {
             UserDefaults.standard.set(true, forKey: PuffinExperiment.autoDetectWorkoutsKey)
         }
