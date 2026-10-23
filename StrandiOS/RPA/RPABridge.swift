@@ -114,10 +114,13 @@ final class RPABridge {
 
     private static func workout(_ w: WorkoutRow) -> [String: Any] {
         let zones = w.zonesJSON.flatMap { $0.data(using: .utf8) }.flatMap { try? JSONSerialization.jsonObject(with: $0) }
+        // A run recorded in NOOP with the phone's GPS keeps its route in RouteStore, not on the row.
+        let route = RouteStore.load(startTs: w.startTs, sport: w.sport)
         return clean([
             "start_ts": w.startTs, "end_ts": w.endTs, "sport": w.sport, "origin": w.source, "duration_s": w.durationS,
             "energy_kcal": w.energyKcal, "avg_hr": w.avgHr, "max_hr": w.maxHr, "strain": w.strain,
-            "distance_m": w.distanceM, "zones": zones, "notes": w.notes,
+            "distance_m": w.distanceM ?? route.map { ($0.distanceM * 10).rounded() / 10 }, "zones": zones, "notes": w.notes,
+            "route_polyline": route?.polyline,
         ])
     }
 
