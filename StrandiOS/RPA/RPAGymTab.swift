@@ -33,10 +33,21 @@ struct RPAGymTab: View {
     }
 }
 
+/// The food log screen of the same web app as its own tab, with NOOP's tab bar kept underneath it
+/// (`?tab=1` hides the gym app's own bar there; see views/Food.jsx in openGym).
+struct RPAFoodTab: View {
+    static let url = URL(string: "https://rpagym.netlify.app/#/food?tab=1")!
+
+    var body: some View {
+        RPAWebView(url: Self.url)
+            .background(Color.black)
+    }
+}
+
 private struct RPAWebView: UIViewRepresentable {
     let url: URL
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator { Coordinator(url: url) }
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -62,6 +73,9 @@ private struct RPAWebView: UIViewRepresentable {
     func updateUIView(_ web: WKWebView, context: Context) {}
 
     final class Coordinator: NSObject, WKUIDelegate, WKNavigationDelegate, WKScriptMessageHandler {
+        let url: URL
+        init(url: URL) { self.url = url }
+
         func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage) {
             guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
             Task { @MainActor in
@@ -80,7 +94,7 @@ private struct RPAWebView: UIViewRepresentable {
 
         // A failed first load (offline at launch) would otherwise leave a blank tab until relaunch.
         func webView(_ web: WKWebView, didFailProvisionalNavigation nav: WKNavigation!, withError error: Error) {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { if web.url == nil { web.load(URLRequest(url: RPAGymTab.url)) } }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { if web.url == nil { web.load(URLRequest(url: self.url)) } }
         }
 
         // The web app uses confirm()/alert() for destructive actions; WKWebView shows nothing without these.

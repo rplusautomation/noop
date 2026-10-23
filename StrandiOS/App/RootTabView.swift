@@ -52,12 +52,12 @@ struct RootTabView: View {
     /// root view alive, so an at-root re-tap keeps scroll position and never re-runs `.task`
     /// (#198; the #197 resetID/`.id()` rebuild reset both). Requires the tab roots' first-hop
     /// links to push `TabRoute`/`MoreDestination` VALUES — closure-destination links bypass the path.
-    @State private var tabPaths: [NavigationPath] = Array(repeating: NavigationPath(), count: 6)   // R+ fork: 6 (gym tab = 5)
+    @State private var tabPaths: [NavigationPath] = Array(repeating: NavigationPath(), count: 7)   // R+ fork: 7 (gym tab = 5, food tab = 6)
     /// One scroll-to-top token per tab. Bumped when the user re-taps the active tab while it's ALREADY
     /// at its root — the other half of the iOS convention #197/#198 left unserved (an at-root re-tap was
     /// a no-op). Threaded into each tab's root via `\.scrollToTopSignal`; ScreenScaffold / LiquidTodayView
     /// scroll to their top anchor when their tab's token changes.
-    @State private var scrollTop: [Int] = Array(repeating: 0, count: 6)   // R+ fork: 6 (gym tab = 5)
+    @State private var scrollTop: [Int] = Array(repeating: 0, count: 7)   // R+ fork: 7 (gym tab = 5, food tab = 6)
     /// Which More-tab groups are expanded (S2). Insights + Body stay open at rest; Data + App collapse to
     /// just their header until tapped. Persisted (#860 item 2): the user's open/closed choice must SURVIVE
     /// leaving and re-entering the More tab (and relaunch), not reset to the seed every visit. Backed by an
@@ -112,10 +112,14 @@ struct RootTabView: View {
         DragGesture(minimumDistance: 24)
             .onEnded { v in
                 // Today (tab 0) uses horizontal swipe to change DAYS, so tab-swipe is off there.
-                guard selectedTab != 0, selectedTab != 5 else { return }   // R+ fork: gym tab keeps its own swipes
+                // R+ fork: the gym and food tabs (web views) keep their own swipes; the bar is
+                // Today, gym, food, Sleep, More, so a swipe steps through that order, not the tags.
+                guard selectedTab != 0, selectedTab != 5, selectedTab != 6 else { return }
                 let dx = v.translation.width, dy = v.translation.height
                 guard abs(dx) > 60, abs(dx) > abs(dy) * 1.6 else { return }
-                let next = min(4, max(0, selectedTab + (dx < 0 ? 1 : -1)))
+                let order = [0, 5, 6, 2, 4]
+                guard let at = order.firstIndex(of: selectedTab) else { return }
+                let next = order[min(order.count - 1, max(0, at + (dx < 0 ? 1 : -1)))]
                 if next != selectedTab {
                     withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.24)) { selectedTab = next }
                 }
@@ -129,17 +133,10 @@ struct RootTabView: View {
         TabView(selection: nativeTabSelection) {
             tab(todayTabRoot, "Today", "square.grid.2x2", path: $tabPaths[0], scrollSignal: scrollTop[0]).tag(0)
             RPAGymTab(onClose: { selectedTab = 0 }).tabItem { Label("健身", systemImage: "dumbbell") }.tag(5)   // R+ fork
-            tab(TrendsView(), "Trends", "chart.line.uptrend.xyaxis", path: $tabPaths[1], scrollSignal: scrollTop[1]).tag(1)
+            // R+ fork: food log in the middle; Trends and Coach moved into More so the bar holds five
+            // tabs and iOS adds no overflow "More" of its own.
+            RPAFoodTab().tabItem { Label("饮食", systemImage: "fork.knife") }.tag(6)
             tab(SleepView(), "Sleep", "bed.double", path: $tabPaths[2], scrollSignal: scrollTop[2]).tag(2)
-            // K3: Coach promoted to a top-level tab (was behind the More list). The sparkles icon
-            // matches the More-tab row and the macOS sidebar entry.
-            // Conditional on the master switch. The tags stay LITERAL rather than being renumbered when
-            // Coach is absent: `tabPaths` and `scrollTop` are indexed by tag, and More stays tag 4 in both
-            // shapes, so a wearer's More tab keeps its identity, its navigation path and its scroll
-            // position across a flip instead of inheriting Coach's.
-            if coachEnabled {
-                tab(CoachView(), "Coach", "sparkles", path: $tabPaths[3], scrollSignal: scrollTop[3]).tag(3)
-            }
             moreTab(path: $tabPaths[4], scrollSignal: scrollTop[4]).tag(4)
         }
         .tint(StrandPalette.accent)
@@ -226,11 +223,11 @@ struct RootTabView: View {
                     router.requestedDestination = nil
                     break
                 }
-                withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.24)) { selectedTab = 3 }
+                routedPillar = dest   // R+ fork: Coach lives under More, not as a tab
                 router.requestedDestination = nil
             case .trends:
                 // Trends is a primary tab on iPhone (not a pillar sheet) — switch to it.
-                withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.24)) { selectedTab = 1 }
+                routedPillar = dest   // R+ fork: Trends lives under More, not as a tab
                 router.requestedDestination = nil
             case .activeWorkout:
                 // The Today active-workout indicator opens Live through the quick-action Live sheet; once
@@ -467,6 +464,8 @@ struct RootTabView: View {
                            onRefresh: { await repo.refresh() },
                            topBackground: liquidScaffoldSky()) {
                 moreSection("Insights") {
+                    MoreRow("Trends", "chart.line.uptrend.xyaxis", .trends)   // R+ fork: was a tab
+                    if coachEnabled { MoreRow("Coach", "sparkles", .coach) }   // R+ fork: was a tab
                     MoreRow("What Moves You", "wand.and.sparkles", .insightsHub)
                     MoreRow("Intelligence", "brain.head.profile", .intelligence)
                     // K3: Coach promoted to a top-level tab — no longer listed under More.
@@ -600,13 +599,14 @@ struct RootTabView: View {
 /// per-screen chrome the old inline links applied lives at the single `navigationDestination(for:)`
 /// registration in `moreTab`.
 private enum MoreDestination: Hashable {
-    case insightsHub, intelligence, coach, insights, explore, compare
+    case trends, insightsHub, intelligence, coach, insights, explore, compare   // R+ fork: trends
     case live, workouts, liftLog, health, labBook, stress, breathe, intervals, rhythm
     case fusedRecord, appleHealth, miBand, dataSources, backupSync, shortcutsExport, noopLimitations
     case alarms, automations, testCentre, siriShortcuts, powerSaving, settings
 
     @ViewBuilder var destination: some View {
         switch self {
+        case .trends:          TrendsView()   // R+ fork
         case .insightsHub:     InsightsHubView()
         case .intelligence:    IntelligenceView()
         case .coach:           CoachView()
