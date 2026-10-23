@@ -97,6 +97,14 @@ private struct RPAWebView: UIViewRepresentable {
             DispatchQueue.main.asyncAfter(deadline: .now() + 5) { if web.url == nil { web.load(URLRequest(url: self.url)) } }
         }
 
+        // The food log's live barcode scan uses getUserMedia; our own site gets the camera without a
+        // second web-level prompt (iOS still asks once for the app's camera permission).
+        func webView(_ web: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+                     initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType,
+                     decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+            decisionHandler(origin.host == RPAGymTab.url.host && type == .camera ? .grant : .prompt)
+        }
+
         // The web app uses confirm()/alert() for destructive actions; WKWebView shows nothing without these.
         func webView(_ web: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
                      initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
