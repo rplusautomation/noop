@@ -82,6 +82,7 @@ private struct RPAWebView: UIViewRepresentable {
                 switch type {
                 case "rest": if let sec = (body["seconds"] as? NSNumber)?.intValue, sec > 0 { RPABridge.shared.rest(seconds: sec) }
                 case "cancel": RPABridge.shared.cancelRest()
+                case "scan": RPABarcodeScanner.shared.present(for: message.webView)
                 default: break
                 }
             }
