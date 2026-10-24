@@ -67,6 +67,7 @@ private struct RPAWebView: UIViewRepresentable {
         refresh.addTarget(context.coordinator, action: #selector(Coordinator.reload(_:)), for: .valueChanged)
         web.scrollView.refreshControl = refresh
         web.load(URLRequest(url: url))
+        context.coordinator.watchForeground(web)
         return web
     }
 
@@ -74,7 +75,22 @@ private struct RPAWebView: UIViewRepresentable {
 
     final class Coordinator: NSObject, WKUIDelegate, WKNavigationDelegate, WKScriptMessageHandler {
         let url: URL
+        private var foreground: NSObjectProtocol?
         init(url: URL) { self.url = url }
+        deinit { if let foreground { NotificationCenter.default.removeObserver(foreground) } }
+
+        /// Back from the background, the web app's first sync can fail while the network wakes up,
+        /// and it then shows "offline" until its next poll. An `online` event a moment later makes it
+        /// retry at once (openGym listens for it: useStore checkRev(true)), so the banner goes away.
+        func watchForeground(_ web: WKWebView) {
+            foreground = NotificationCenter.default.addObserver(
+                forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+            ) { [weak web] _ in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    web?.evaluateJavaScript("window.dispatchEvent(new Event('online'))")
+                }
+            }
+        }
 
         func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage) {
             guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }

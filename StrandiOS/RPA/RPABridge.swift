@@ -9,6 +9,7 @@
 import Combine
 import Foundation
 import UIKit
+import UserNotifications
 import WhoopStore
 
 @MainActor
@@ -54,23 +55,75 @@ final class RPABridge {
 
     // MARK: rest buzz
 
+    private static let restNoteId = "rpa.rest.end"
+    private var restStreaming = false
+
     /// The gym tab started a rest: buzz the strap when it ends instead of the web app's lock-screen
-    /// push. Same mechanism as NOOP's own lift rest timer (LiftSessionController): a main-actor task
-    /// sleeping until the end; iOS keeps NOOP running while the strap streams.
+    /// push. iOS suspends NOOP in the background unless Bluetooth events keep arriving, and between
+    /// sets the strap is otherwise quiet, so a sleeping task alone fired only once the app was opened
+    /// again. Three parts:
+    /// 1. the strap's realtime HR stream is held on for the rest, so its notifications keep the app
+    ///    awake and the task wakes on time (released when the rest ends or is cancelled);
+    /// 2. a local notification at the same moment gives the sound and the banner on the lock screen,
+    ///    and covers the case where the app was suspended anyway;
+    /// 3. a task that wakes more than a few seconds late (the app was suspended) does not buzz:
+    ///    a buzz on reopening the app is a wrong signal, the notification already said it.
     func rest(seconds: Int) {
-        restTask?.cancel()
+        cancelRest()
         let end = Date().addingTimeInterval(TimeInterval(seconds))
+        scheduleRestNotification(at: end)
+        if let model, !restStreaming {
+            model.startRealtimeHR()
+            restStreaming = true
+        }
         restTask = Task { [weak self] in
             let delay = end.timeIntervalSinceNow
             if delay > 0 { try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
-            guard !Task.isCancelled else { return }
-            self?.model?.buzz(loops: 3)
+            guard let self, !Task.isCancelled else { return }
+            // In front of the screen the web app rings itself: no second sound from the notification.
+            if UIApplication.shared.applicationState == .active {
+                UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [Self.restNoteId])
+            }
+            if -end.timeIntervalSinceNow < 5 { self.model?.buzz(loops: 3) }
+            self.releaseStream()
         }
     }
 
     func cancelRest() {
         restTask?.cancel()
         restTask = nil
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [Self.restNoteId])
+        releaseStream()
+    }
+
+    private func releaseStream() {
+        guard restStreaming else { return }
+        restStreaming = false
+        model?.stopRealtimeHR()
+    }
+
+    private func scheduleRestNotification(at end: Date) {
+        let center = UNUserNotificationCenter.current()
+        // Fires half a second after the in-app task, so a foreground app can withdraw it first.
+        let interval = max(1, end.timeIntervalSinceNow + 0.5)
+        let id = Self.restNoteId
+        center.getNotificationSettings { settings in
+            let add = {
+                let content = UNMutableNotificationContent()
+                content.title = "休息结束"
+                content.body = "开始下一组"
+                content.sound = .default
+                content.interruptionLevel = .timeSensitive
+                let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
+                center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
+            }
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral: add()
+            case .notDetermined:
+                center.requestAuthorization(options: [.alert, .sound]) { granted, _ in if granted { add() } }
+            default: break
+            }
+        }
     }
 
     // MARK: push
