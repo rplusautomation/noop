@@ -17,15 +17,18 @@ final class SyncKeepAwake {
 
     private init() {}
 
-    func attach(to live: LiveState) {
+    /// R+ fork: also holds while the scoring pass runs (`IntelligenceEngine.computing`). The sync itself
+    /// ends in seconds, but the pass that turns it into the night's sleep score can take minutes, and iOS
+    /// suspending the app mid-pass left the Sleep tab on "calculating" until the next manual wait.
+    func attach(to live: LiveState, intelligence: IntelligenceEngine) {
         let key = ScreenIdle.strapSyncKeepAwakeKey
         let enabled = NotificationCenter.default
             .publisher(for: UserDefaults.didChangeNotification)
             .map { _ in UserDefaults.standard.bool(forKey: key) }
             .prepend(UserDefaults.standard.bool(forKey: key))
         cancellable = live.$backfilling
-            .combineLatest(enabled)
-            .map { backfilling, on in backfilling && on }
+            .combineLatest(intelligence.$computing, enabled)
+            .map { backfilling, computing, on in (backfilling || computing) && on }
             .removeDuplicates()
             .receive(on: DispatchQueue.main)
             .sink { hold in

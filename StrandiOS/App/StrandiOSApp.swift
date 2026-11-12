@@ -92,7 +92,7 @@ struct StrandiOSApp: App {
             model?.live.append(log: AppModel.stamped(line))
         })
         // Settings → "Keep screen on while syncing". Wired once here, not as another modifier on `body`.
-        SyncKeepAwake.shared.attach(to: model.live)
+        SyncKeepAwake.shared.attach(to: model.live, intelligence: model.intelligence)   // R+ fork: + scoring pass
         // The strap-sync Live Activity (Lock Screen + Dynamic Island). Same placement, same reason — and
         // it must also run in a process the Sync Strap shortcut launched with no scene.
         SyncLiveActivityController.shared.attach(to: model.live)
