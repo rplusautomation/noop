@@ -69,7 +69,7 @@ public enum PrimarySessionRestingHR {
     /// coverage definition rather than inheriting one. Same longest-session selection + gate as `meanHR`
     /// (returns `nil` in lockstep with it), so the mean and its coverage are always emitted together. Still
     /// pure + unwired — shadow instrumentation only. Twin of Kotlin `PrimarySessionRestingHR.coverage`.
-    public struct Coverage: Sendable, Equatable {
+    public struct Coverage: Sendable, Equatable, Codable {   // R+ fork: Codable
         /// Valid HR samples in the primary session (the count the `minValidSamples` gate saw).
         public let validSamples: Int
         /// The primary (longest) session's duration in seconds.

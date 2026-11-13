@@ -181,7 +181,7 @@ public enum SleepStageTotals {
     /// One candidate block for main-night selection. The `start` is the EFFECTIVE onset (a user wake/
     /// bed edit moves `end`, never the detected onset key), and `tzOffsetSeconds` turns it local so the
     /// timing test reads the user's clock, not UTC.
-    public struct NightBlock {
+    public struct NightBlock: Codable {   // R+ fork: Codable
         public let start: Int, end: Int
         public init(start: Int, end: Int) { self.start = start; self.end = end }
         public var durationS: Int { end - start }

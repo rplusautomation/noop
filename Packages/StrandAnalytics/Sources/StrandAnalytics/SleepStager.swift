@@ -40,7 +40,7 @@ public struct StageSegment: Equatable, Sendable, Codable {
 }
 
 /// A detected sleep session (in-bed span) with APPROXIMATE staging.
-public struct SleepSession: Equatable, Sendable {
+public struct SleepSession: Equatable, Sendable, Codable {   // R+ fork: Codable
     public let start: Int
     public let end: Int
     /// asleep / in-bed in [0, 1] (AASM TST/TIB; asleep = in-bed − wake).

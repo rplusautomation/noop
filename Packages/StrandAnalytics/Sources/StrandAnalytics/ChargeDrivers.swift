@@ -25,7 +25,7 @@ import Foundation
 // No em-dashes.
 
 /// One row of the Charge driver breakdown (SHARED CONTRACT shape).
-public struct ChargeDriver: Equatable, Sendable {
+public struct ChargeDriver: Equatable, Sendable, Codable {   // R+ fork: Codable
     /// Human label for the term, e.g. "Resting heart rate".
     public let label: String
     /// Signed contribution of this term to the 0-100 Charge score, in points. Positive =
@@ -53,7 +53,7 @@ public struct ChargeDriver: Equatable, Sendable {
 /// A5: a skin-temperature reading presented as a RELATIVE deviation from the personal
 /// baseline (a trend), never a fake clinical absolute. Carries the signed deviation and the
 /// relative tier so the UI can label it "warmer / typical / cooler than your baseline".
-public struct SkinTempRelative: Equatable, Sendable {
+public struct SkinTempRelative: Equatable, Sendable, Codable {   // R+ fork: Codable
 
     /// Relative tier: where tonight's skin temp sits versus the personal baseline. NOT a
     /// clinical absolute - purely a deviation band.

@@ -89,6 +89,10 @@ final class IntelligenceEngine: ObservableObject {
     /// pass-global, not in the per-day key, so when the current pass's signature differs every cached scan is
     /// potentially stale and the whole cache is dropped. Empty until the first pass.
     private var dayScanCacheConfigSig = ""
+    // R+ fork: on-disk copy of `dayScanCache` (RPADayCacheStore), so a cold launch does not re-score all nights.
+    private struct RPADiskDayScan: Codable { let key: String; let scan: DayScan }
+    private var rpaDayCacheDiskLoaded = false
+    private var rpaDayCacheDiskSig = ""
 
     /// Names of the config-signature fields, in the exact order `dayCacheConfigSig` builds them.
     ///
@@ -194,7 +198,7 @@ final class IntelligenceEngine: ObservableObject {
     /// returned a `DayResult` across the `Task.detached` boundary under this project's `minimal` strict-
     /// concurrency setting (SWIFT_STRICT_CONCURRENCY: minimal, Swift 5 mode) , this wraps the same value
     /// type the same way, so it crosses the boundary identically.
-    private struct DayScan {
+    private struct DayScan: Codable {   // R+ fork: Codable for RPADayCacheStore
         let result: AnalyticsEngine.DayResult
         let rhrLine: String?
         /// #1943 measure-only bin-population line (see `SleepStager.rhrBinGateLogLine`); nil on a clean
@@ -1115,6 +1119,13 @@ final class IntelligenceEngine: ObservableObject {
         // otherwise stay silent on the very case it exists to explain.
         var dayCacheConfigDropped = false
         var dayCacheConfigMoved = ""
+        if !rpaDayCacheDiskLoaded {   // R+ fork: seed from disk once per process; the check below still applies
+            rpaDayCacheDiskLoaded = true
+            if dayScanCache.isEmpty, let disk = RPADayCacheStore.load([String: RPADiskDayScan].self) {
+                dayScanCache = disk.payload.mapValues { (key: $0.key, scan: $0.scan) }
+                dayScanCacheConfigSig = disk.configSig
+            }
+        }
         if dayCacheConfigSig != dayScanCacheConfigSig {
             dayCacheConfigMoved = Self.changedConfigField(previous: dayScanCacheConfigSig,
                                                           current: dayCacheConfigSig)
@@ -1885,6 +1896,14 @@ final class IntelligenceEngine: ObservableObject {
         // #1005: write the loop's updated reuse cache back to the (main-actor) stored property. The pass ran
         // to completion above (`.value` awaited), so there is no concurrent access.
         dayScanCache = updatedDayScanCache
+        // R+ fork: persist only when an entry changed (a fully reused pass writes nothing).
+        let rpaSig = dayScanCacheConfigSig + "#" + dayScanCache.keys.sorted()
+            .map { "\($0)=\(dayScanCache[$0]!.key)" }.joined(separator: ";")
+        if rpaSig != rpaDayCacheDiskSig {
+            rpaDayCacheDiskSig = rpaSig
+            RPADayCacheStore.save(configSig: dayScanCacheConfigSig,
+                                  payload: dayScanCache.mapValues { RPADiskDayScan(key: $0.key, scan: $0.scan) })
+        }
         // #1538: the pass after the day loop was never measured. The cost line above brackets the loop and
         // is emitted the moment it returns, so a pass whose time went somewhere later reported a small
         // prep/score and no account of the rest — which is where the steps calibration was re-folding sixty

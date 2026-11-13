@@ -66,7 +66,7 @@ public enum AnalyticsEngine {
     /// WhoopStore, which are not `Sendable` (and that package is out of scope to
     /// modify here). The individual analyzer result types in this package ARE
     /// `Sendable`.
-    public struct DayResult {
+    public struct DayResult: Codable {   // R+ fork: Codable for the on-disk day cache
         /// DailyMetric in the WhoopStore cache shape (recovery/strain/sleep rolled up).
         public let daily: DailyMetric
         /// Detected sleep sessions (rich, with stage segments).
