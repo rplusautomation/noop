@@ -4,6 +4,7 @@
 // process and re-scored all 21 nights from raw (5 to 19 min CPU on this phone). In the background iOS
 // suspends that pass after ~30 s and the partial work is lost, so the Sleep tab stayed on "calculating".
 // With this copy the cold pass reuses every unchanged night and only scores the new one (seconds).
+// The same applies to DayCycleIntelligenceIntegration.Cache (per-cycle steps/Effort), the second cold cost.
 //
 // Safety: a separate file in Library/Caches, never the database, never in a .noopbak. It holds only
 // scan results that the cache would have reused anyway, keyed by the same per-day key and config
@@ -15,7 +16,8 @@ import Foundation
 import MachO
 
 enum RPADayCacheStore {
-    private static let fileName = "rpa-dayScanCache.v1.plist"
+    static let dayScanFile = "rpa-dayScanCache.v1.plist"
+    static let dayCycleFile = "rpa-dayCycleCache.v1.plist"
 
     private struct Envelope<Payload: Codable>: Codable {
         let format: Int
@@ -24,9 +26,9 @@ enum RPADayCacheStore {
         let payload: Payload
     }
 
-    private static var fileURL: URL? {
+    private static func fileURL(_ name: String) -> URL? {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
-            .appendingPathComponent(fileName)
+            .appendingPathComponent(name)
     }
 
     /// LC_UUIDs of every image loaded from inside the app bundle (main executable, debug dylib, frameworks).
@@ -53,16 +55,17 @@ enum RPADayCacheStore {
         return ([version] + uuids.sorted()).joined(separator: ",")
     }()
 
-    static func load<Payload: Codable>(_ type: Payload.Type) -> (configSig: String, payload: Payload)? {
-        guard let url = fileURL, let data = try? Data(contentsOf: url),
+    static func load<Payload: Codable>(_ type: Payload.Type, file: String = dayScanFile)
+        -> (configSig: String, payload: Payload)? {
+        guard let url = fileURL(file), let data = try? Data(contentsOf: url),
               let env = try? PropertyListDecoder().decode(Envelope<Payload>.self, from: data),
               env.format == 1, env.build == buildStamp else { return nil }
         return (env.configSig, env.payload)
     }
 
     /// Encodes on the caller, writes off it; a failed encode or write just leaves the previous file or none.
-    static func save<Payload: Codable>(configSig: String, payload: Payload) {
-        guard let url = fileURL else { return }
+    static func save<Payload: Codable>(configSig: String, payload: Payload, file: String = dayScanFile) {
+        guard let url = fileURL(file) else { return }
         let encoder = PropertyListEncoder()
         encoder.outputFormat = .binary
         guard let data = try? encoder.encode(Envelope(format: 1, build: buildStamp, configSig: configSig,

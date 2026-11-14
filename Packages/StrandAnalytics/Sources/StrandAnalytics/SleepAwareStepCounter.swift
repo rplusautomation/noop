@@ -8,7 +8,7 @@ public enum SleepAwareStepCounter {
     public static let minGaitBoutActiveSamples = 5
     public static let minGaitBoutTicks = 6
 
-    public struct Count: Equatable, Sendable {
+    public struct Count: Equatable, Sendable, Codable {   // R+ fork: Codable
         public let totalTicks: Int
         public let acceptedOutsideSleepTicks: Int
         public let acceptedAwakeGapTicks: Int

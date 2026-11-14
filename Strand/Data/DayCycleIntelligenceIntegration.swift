@@ -32,17 +32,36 @@ import WhoopStore
         let owner: String
         let sleepContext: SleepSession
     }
-    fileprivate struct CachedCycle {
+    fileprivate struct CachedCycle: Codable {   // R+ fork: Codable for RPADayCacheStore
         let key: String; let count: SleepAwareStepCounter.Count
         let pages: Int; let samples: Int; let evaluated: Bool
     }
     /// A cycle's Effort and calories, with the key of the inputs they were computed from.
-    fileprivate struct CachedLoad {
+    fileprivate struct CachedLoad: Codable {   // R+ fork: Codable for RPADayCacheStore
         let key: String; let strain: Double?; let calories: Double?
     }
     final class Cache {
         fileprivate var cycles: [String: CachedCycle] = [:]
         fileprivate var loads: [String: CachedLoad] = [:]
+        // R+ fork: on-disk copy (RPADayCacheStore), same keys, so a cold launch does not re-read every cycle.
+        private struct RPADisk: Codable { let cycles: [String: CachedCycle]; let loads: [String: CachedLoad] }
+        private var rpaLoaded = false
+        private var rpaSig = ""
+        fileprivate func rpaLoadIfNeeded() {
+            guard !rpaLoaded else { return }
+            rpaLoaded = true
+            guard cycles.isEmpty, loads.isEmpty,
+                  let disk = RPADayCacheStore.load(RPADisk.self, file: RPADayCacheStore.dayCycleFile) else { return }
+            cycles = disk.payload.cycles; loads = disk.payload.loads
+        }
+        fileprivate func rpaSaveIfChanged() {
+            let sig = cycles.keys.sorted().map { "\($0)=\(cycles[$0]!.key)" }.joined(separator: ";") + "#"
+                + loads.keys.sorted().map { "\($0)=\(loads[$0]!.key)" }.joined(separator: ";")
+            guard sig != rpaSig else { return }
+            rpaSig = sig
+            RPADayCacheStore.save(configSig: "", payload: RPADisk(cycles: cycles, loads: loads),
+                                  file: RPADayCacheStore.dayCycleFile)
+        }
     }
     private static func computedId(_ owner: String) -> String { owner + "-noop" }
 
@@ -176,6 +195,7 @@ import WhoopStore
         }
 
         let windows = PhysiologicalSteps.cycleWindows(boundaries, now: now)
+        cache.rpaLoadIfNeeded()   // R+ fork
         cache.cycles = cache.cycles.filter { entry in windows.contains(where: { $0.sleepId == entry.key }) }
         cache.loads = cache.loads.filter { entry in windows.contains(where: { $0.sleepId == entry.key }) }
         let priorities = Dictionary(candidates.map { ($0.owner, $0.priority) }, uniquingKeysWith: min)
@@ -337,6 +357,7 @@ import WhoopStore
         }
         let recoveredMarkers = recovered.map { SourcedMarker(deviceId: computedId($0.owner),
             point: MetricPoint(day: $0.wakeDay, key: onsetKey, value: Double($0.boundary.onset))) }
+        cache.rpaSaveIfChanged()   // R+ fork
         return Result(stepsByWakeDay: steps, strainByWakeDay: strains, caloriesByWakeDay: calories,
             workoutCountByWakeDay: workoutCounts, onsetByWakeDay: onsets,
             firstWakeDay: wakeDayById.values.min(), markerUpdate: .replace(
