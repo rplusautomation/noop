@@ -1845,6 +1845,10 @@ final class IntelligenceEngine: ObservableObject {
                 if let key = dayCacheKey {
                     dayScanCacheLocal[day] = (key: key, scan: scan)
                     dayCacheCacheable += 1
+                    // R+ fork: keep this night's progress even if iOS kills the pass before it finishes.
+                    RPADayCacheStore.save(configSig: dayCacheConfigSig,
+                                          payload: dayScanCacheLocal.mapValues { RPADiskDayScan(key: $0.key, scan: $0.scan) },
+                                          inline: true)
                 }
                 out.append(scan)
             }

@@ -4,6 +4,9 @@
 // process and re-scored all 21 nights from raw (5 to 19 min CPU on this phone). In the background iOS
 // suspends that pass after ~30 s and the partial work is lost, so the Sleep tab stayed on "calculating".
 // With this copy the cold pass reuses every unchanged night and only scores the new one (seconds).
+// The night-level config (sleep consistency, habitual midsleep) legitimately changes once per local midnight
+// and drops every cached night, so each scored night is also saved as the loop goes: a pass that iOS
+// suspends or kills overnight keeps its progress, and the next wake continues instead of starting over.
 // The same applies to DayCycleIntelligenceIntegration.Cache (per-cycle steps/Effort), the second cold cost.
 //
 // Safety: a separate file in Library/Caches, never the database, never in a .noopbak. It holds only
@@ -64,12 +67,16 @@ enum RPADayCacheStore {
     }
 
     /// Encodes on the caller, writes off it; a failed encode or write just leaves the previous file or none.
-    static func save<Payload: Codable>(configSig: String, payload: Payload, file: String = dayScanFile) {
+    /// `inline: true` writes on the calling thread (used from the off-main scoring loop, so successive
+    /// snapshots land in order).
+    static func save<Payload: Codable>(configSig: String, payload: Payload, file: String = dayScanFile,
+                                       inline: Bool = false) {
         guard let url = fileURL(file) else { return }
         let encoder = PropertyListEncoder()
         encoder.outputFormat = .binary
         guard let data = try? encoder.encode(Envelope(format: 1, build: buildStamp, configSig: configSig,
                                                       payload: payload)) else { return }
+        if inline { try? data.write(to: url, options: .atomic); return }
         Task.detached(priority: .utility) { try? data.write(to: url, options: .atomic) }
     }
 }
